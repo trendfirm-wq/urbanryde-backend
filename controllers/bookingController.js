@@ -12,13 +12,23 @@ exports.createBooking = async (req, res) => {
   try {
     session.startTransaction();
 
-    const { tripId, seats_booked, pickup_point } = req.body;
+    const { tripId, seats_booked, pickup_point, customer_location } = req.body;
 
     if (!tripId || !seats_booked || !pickup_point) {
       await session.abortTransaction();
       return res.status(400).json({
         success: false,
         message: 'Trip, seats booked, and pickup point are required',
+      });
+    }
+
+    const seatsNumber = Number(seats_booked);
+
+    if (!seatsNumber || seatsNumber < 1) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: 'Seats booked must be at least 1',
       });
     }
 
@@ -39,22 +49,24 @@ exports.createBooking = async (req, res) => {
         message: 'This trip is not available for booking',
       });
     }
-const existingBooking = await Booking.findOne({
-  passenger: req.user._id,
-  trip: trip._id,
-  booking_status: { $ne: 'cancelled' },
-}).session(session);
 
-if (existingBooking) {
-  await session.abortTransaction();
-  return res.status(400).json({
-    success: false,
-    message: 'You have already booked this trip',
-  });
-}
+    const existingBooking = await Booking.findOne({
+      passenger: req.user._id,
+      trip: trip._id,
+      booking_status: { $ne: 'cancelled' },
+    }).session(session);
+
+    if (existingBooking) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: 'You have already booked this trip',
+      });
+    }
+
     const availableSeats = trip.total_seats - trip.booked_seats;
 
-    if (seats_booked > availableSeats) {
+    if (seatsNumber > availableSeats) {
       await session.abortTransaction();
       return res.status(400).json({
         success: false,
@@ -62,23 +74,39 @@ if (existingBooking) {
       });
     }
 
-    const total_amount = seats_booked * trip.price_per_seat;
+    const cleanCustomerLocation = customer_location
+      ? {
+          latitude:
+            typeof customer_location.latitude === 'number'
+              ? customer_location.latitude
+              : Number(customer_location.latitude),
+          longitude:
+            typeof customer_location.longitude === 'number'
+              ? customer_location.longitude
+              : Number(customer_location.longitude),
+          address: customer_location.address || '',
+        }
+      : undefined;
+
+    const total_amount = seatsNumber * trip.price_per_seat;
 
     const booking = await Booking.create(
       [
         {
           passenger: req.user._id,
           trip: trip._id,
-          seats_booked,
-          pickup_point,
+          seats_booked: seatsNumber,
+          pickup_point: pickup_point.trim(),
+          customer_location: cleanCustomerLocation,
           total_amount,
           ticket_code: generateTicketCode(),
+          booking_status: 'confirmed',
         },
       ],
       { session }
     );
 
-    trip.booked_seats += Number(seats_booked);
+    trip.booked_seats += seatsNumber;
     await trip.save({ session });
 
     await session.commitTransaction();
@@ -148,7 +176,6 @@ exports.getTripBookings = async (req, res) => {
 };
 
 exports.cancelBooking = async (req, res) => {
-  const mongoose = require('mongoose');
   const session = await mongoose.startSession();
 
   try {
@@ -164,7 +191,6 @@ exports.cancelBooking = async (req, res) => {
       });
     }
 
-    // prevent cancelling twice
     if (booking.booking_status === 'cancelled') {
       await session.abortTransaction();
       return res.status(400).json({
@@ -175,11 +201,9 @@ exports.cancelBooking = async (req, res) => {
 
     const trip = await Trip.findById(booking.trip).session(session);
 
-    // ✅ CANCEL BOOKING
     booking.booking_status = 'cancelled';
     await booking.save({ session });
 
-    // ✅ RETURN SEATS BACK TO TRIP
     if (trip) {
       trip.booked_seats = Math.max(
         0,
@@ -207,6 +231,7 @@ exports.cancelBooking = async (req, res) => {
     session.endSession();
   }
 };
+
 exports.getDriverBookings = async (req, res) => {
   try {
     const Vehicle = require('../models/Vehicle');
