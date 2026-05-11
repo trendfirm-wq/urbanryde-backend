@@ -10,10 +10,10 @@ const userSchema = new mongoose.Schema(
 
     email: {
       type: String,
-      required: true,
-      unique: true,
       lowercase: true,
       trim: true,
+      default: undefined,
+      sparse: true,
     },
 
     phone: {
@@ -32,6 +32,21 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ['passenger', 'driver', 'admin'],
       default: 'passenger',
+    },
+
+    is_phone_verified: {
+      type: Boolean,
+      default: false,
+    },
+
+    phone_otp: {
+      type: String,
+      default: null,
+    },
+
+    phone_otp_expires: {
+      type: Date,
+      default: null,
     },
 
     is_active: {

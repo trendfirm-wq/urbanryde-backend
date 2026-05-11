@@ -6,23 +6,21 @@ const {
   me,
   createDriver,
   getAllDrivers,
+  verifyPhoneOtp,
+  resendPhoneOtp,
 } = require('../controllers/authController');
 
-const {
-  protect,
-  allowRoles,
-} = require('../middleware/authMiddleware');
+const { protect, allowRoles } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-// Public routes
 router.post('/register', register);
 router.post('/login', login);
+router.post('/verify-phone', verifyPhoneOtp);
+router.post('/resend-otp', resendPhoneOtp);
 
-// Protected routes
 router.get('/me', protect, me);
 
-// 🔥 ADMIN ROUTES
 router.post('/create-driver', protect, allowRoles('admin'), createDriver);
 router.get('/drivers', protect, allowRoles('admin'), getAllDrivers);
 
