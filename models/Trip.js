@@ -1,5 +1,11 @@
 const mongoose = require('mongoose');
 
+const locationSchema = {
+  latitude: Number,
+  longitude: Number,
+  address: String,
+};
+
 const tripSchema = new mongoose.Schema(
   {
     vehicle: {
@@ -26,10 +32,28 @@ const tripSchema = new mongoose.Schema(
       trim: true,
     },
 
+    start_location: locationSchema,
+
+    destination_location: locationSchema,
+
+    route_polyline: {
+      type: String,
+      default: '',
+    },
+
+    route_coordinates: [
+      {
+        latitude: Number,
+        longitude: Number,
+      },
+    ],
+
     pickup_points: [
       {
         name: String,
         time: String,
+        latitude: Number,
+        longitude: Number,
       },
     ],
 

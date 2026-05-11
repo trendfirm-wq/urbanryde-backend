@@ -1,5 +1,6 @@
 const Trip = require('../models/Trip');
 const Vehicle = require('../models/Vehicle');
+const { getRouteData } = require('../utils/mapService');
 
 exports.createTrip = async (req, res) => {
   try {
@@ -28,6 +29,22 @@ exports.createTrip = async (req, res) => {
       });
     }
 
+    let routeData = {
+      start_location: null,
+      destination_location: null,
+      route_polyline: '',
+      route_coordinates: [],
+    };
+
+    try {
+      routeData = await getRouteData({
+        origin: `${route_from}, Ghana`,
+        destination: `${route_to}, Ghana`,
+      });
+    } catch (mapError) {
+      console.log('Route generation failed:', mapError.message);
+    }
+
     const trip = await Trip.create({
       vehicle,
       driver: req.user._id,
@@ -37,6 +54,7 @@ exports.createTrip = async (req, res) => {
       departure_time,
       price_per_seat,
       total_seats: foundVehicle.total_seats,
+      ...routeData,
     });
 
     res.status(201).json({
@@ -52,6 +70,7 @@ exports.createTrip = async (req, res) => {
     });
   }
 };
+
 exports.getAllTrips = async (req, res) => {
   try {
     const trips = await Trip.find()
@@ -147,10 +166,9 @@ exports.updateTripStatus = async (req, res) => {
     });
   }
 };
+
 exports.getDriverTrips = async (req, res) => {
   try {
-    const Vehicle = require('../models/Vehicle');
-
     const driverVehicles = await Vehicle.find({
       driver_user: req.user._id,
     });
