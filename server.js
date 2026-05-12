@@ -8,7 +8,11 @@ const connectDB = require('./config/db');
 const TripLocation = require('./models/TripLocation');
 const Booking = require('./models/Booking');
 const Trip = require('./models/Trip');
-const { createNotification } = require('./utils/notificationService');
+
+const {
+  createNotification,
+  setSocketIo,
+} = require('./utils/notificationService');
 
 const app = express();
 
@@ -40,8 +44,24 @@ const io = new Server(server, {
   },
 });
 
+setSocketIo(io);
+
 io.on('connection', (socket) => {
   console.log('Socket connected:', socket.id);
+
+  socket.on('joinUserNotifications', ({ userId }) => {
+    if (!userId) return;
+
+    socket.join(`user_${userId}`);
+    console.log(`Socket ${socket.id} joined user_${userId}`);
+  });
+
+  socket.on('leaveUserNotifications', ({ userId }) => {
+    if (!userId) return;
+
+    socket.leave(`user_${userId}`);
+    console.log(`Socket ${socket.id} left user_${userId}`);
+  });
 
   socket.on('joinTripTracking', ({ tripId }) => {
     if (!tripId) return;
