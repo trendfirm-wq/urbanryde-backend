@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Trip = require('../models/Trip');
 const Booking = require('../models/Booking');
+const { createNotification } = require('../utils/notificationService');
 
 const generateTicketCode = () => {
   return `UR-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -16,6 +17,7 @@ exports.createBooking = async (req, res) => {
 
     if (!tripId || !seats_booked || !pickup_point) {
       await session.abortTransaction();
+
       return res.status(400).json({
         success: false,
         message: 'Trip, seats booked, and pickup point are required',
@@ -26,6 +28,7 @@ exports.createBooking = async (req, res) => {
 
     if (!seatsNumber || seatsNumber < 1) {
       await session.abortTransaction();
+
       return res.status(400).json({
         success: false,
         message: 'Seats booked must be at least 1',
@@ -36,6 +39,7 @@ exports.createBooking = async (req, res) => {
 
     if (!trip) {
       await session.abortTransaction();
+
       return res.status(404).json({
         success: false,
         message: 'Trip not found',
@@ -44,6 +48,7 @@ exports.createBooking = async (req, res) => {
 
     if (trip.status !== 'scheduled') {
       await session.abortTransaction();
+
       return res.status(400).json({
         success: false,
         message: 'This trip is not available for booking',
@@ -58,6 +63,7 @@ exports.createBooking = async (req, res) => {
 
     if (existingBooking) {
       await session.abortTransaction();
+
       return res.status(400).json({
         success: false,
         message: 'You have already booked this trip',
@@ -68,6 +74,7 @@ exports.createBooking = async (req, res) => {
 
     if (seatsNumber > availableSeats) {
       await session.abortTransaction();
+
       return res.status(400).json({
         success: false,
         message: `Only ${availableSeats} seat(s) available`,
@@ -80,10 +87,12 @@ exports.createBooking = async (req, res) => {
             typeof customer_location.latitude === 'number'
               ? customer_location.latitude
               : Number(customer_location.latitude),
+
           longitude:
             typeof customer_location.longitude === 'number'
               ? customer_location.longitude
               : Number(customer_location.longitude),
+
           address: customer_location.address || '',
         }
       : undefined;
@@ -107,9 +116,44 @@ exports.createBooking = async (req, res) => {
     );
 
     trip.booked_seats += seatsNumber;
+
     await trip.save({ session });
 
     await session.commitTransaction();
+
+    // PASSENGER NOTIFICATION
+    await createNotification({
+      recipient: req.user._id,
+
+      title: 'Booking confirmed',
+
+      message: `Your booking from ${trip.route_from} to ${trip.route_to} has been confirmed.`,
+
+      type: 'booking_confirmed',
+
+      data: {
+        tripId: trip._id,
+        bookingId: booking[0]._id,
+      },
+    });
+
+    // DRIVER NOTIFICATION
+    if (trip.driver) {
+      await createNotification({
+        recipient: trip.driver,
+
+        title: 'New passenger booking',
+
+        message: `A passenger booked ${seatsNumber} seat(s) from ${trip.route_from} to ${trip.route_to}.`,
+
+        type: 'new_booking',
+
+        data: {
+          tripId: trip._id,
+          bookingId: booking[0]._id,
+        },
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -131,12 +175,15 @@ exports.createBooking = async (req, res) => {
 
 exports.getMyBookings = async (req, res) => {
   try {
-    const bookings = await Booking.find({ passenger: req.user._id })
+    const bookings = await Booking.find({
+      passenger: req.user._id,
+    })
       .populate({
         path: 'trip',
         populate: {
           path: 'vehicle driver',
-          select: 'vehicle_name vehicle_type plate_number full_name phone',
+          select:
+            'vehicle_name vehicle_type plate_number full_name phone',
         },
       })
       .sort({ createdAt: -1 });
@@ -157,7 +204,9 @@ exports.getMyBookings = async (req, res) => {
 
 exports.getTripBookings = async (req, res) => {
   try {
-    const bookings = await Booking.find({ trip: req.params.tripId })
+    const bookings = await Booking.find({
+      trip: req.params.tripId,
+    })
       .populate('passenger', 'full_name phone email')
       .sort({ createdAt: -1 });
 
@@ -185,6 +234,7 @@ exports.cancelBooking = async (req, res) => {
 
     if (!booking) {
       await session.abortTransaction();
+
       return res.status(404).json({
         success: false,
         message: 'Booking not found',
@@ -193,6 +243,7 @@ exports.cancelBooking = async (req, res) => {
 
     if (booking.booking_status === 'cancelled') {
       await session.abortTransaction();
+
       return res.status(400).json({
         success: false,
         message: 'Booking already cancelled',
@@ -202,6 +253,7 @@ exports.cancelBooking = async (req, res) => {
     const trip = await Trip.findById(booking.trip).session(session);
 
     booking.booking_status = 'cancelled';
+
     await booking.save({ session });
 
     if (trip) {
@@ -214,6 +266,40 @@ exports.cancelBooking = async (req, res) => {
     }
 
     await session.commitTransaction();
+
+    // PASSENGER NOTIFICATION
+    await createNotification({
+      recipient: booking.passenger,
+
+      title: 'Booking cancelled',
+
+      message: 'Your booking has been cancelled successfully.',
+
+      type: 'booking_cancelled',
+
+      data: {
+        bookingId: booking._id,
+        tripId: booking.trip,
+      },
+    });
+
+    // DRIVER NOTIFICATION
+    if (trip?.driver) {
+      await createNotification({
+        recipient: trip.driver,
+
+        title: 'Passenger cancelled booking',
+
+        message: 'A passenger cancelled their booking on your trip.',
+
+        type: 'passenger_cancelled_booking',
+
+        data: {
+          bookingId: booking._id,
+          tripId: booking.trip,
+        },
+      });
+    }
 
     res.json({
       success: true,
@@ -240,7 +326,9 @@ exports.getDriverBookings = async (req, res) => {
       driver_user: req.user._id,
     });
 
-    const vehicleIds = driverVehicles.map((vehicle) => vehicle._id);
+    const vehicleIds = driverVehicles.map(
+      (vehicle) => vehicle._id
+    );
 
     const trips = await Trip.find({
       vehicle: { $in: vehicleIds },

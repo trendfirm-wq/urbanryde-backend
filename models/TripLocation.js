@@ -29,7 +29,10 @@ const tripLocationSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-
+start_notification_sent: {
+  type: Boolean,
+  default: false,
+},
     speed: {
       type: Number,
       default: 0,
