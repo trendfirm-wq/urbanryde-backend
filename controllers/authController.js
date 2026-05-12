@@ -426,3 +426,42 @@ exports.getAllDrivers = async (req, res) => {
     });
   }
 };
+exports.deleteMyAccount = async (req, res) => {
+  try {
+    const { reason } = req.body;
+
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a reason for deleting your account',
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    user.is_active = false;
+    user.is_deleted = true;
+    user.deleted_at = new Date();
+    user.delete_reason = reason.trim();
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Your account deletion request has been completed',
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete account',
+      error: error.message,
+    });
+  }
+};
