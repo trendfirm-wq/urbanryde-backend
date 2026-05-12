@@ -33,7 +33,10 @@ const userSchema = new mongoose.Schema(
       enum: ['passenger', 'driver', 'admin'],
       default: 'passenger',
     },
-
+expo_push_token: {
+  type: String,
+  default: '',
+},
     is_phone_verified: {
       type: Boolean,
       default: false,

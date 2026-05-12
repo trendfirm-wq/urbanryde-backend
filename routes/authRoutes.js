@@ -9,6 +9,7 @@ const {
   verifyPhoneOtp,
   resendPhoneOtp,
   deleteMyAccount,
+  savePushToken,
 } = require('../controllers/authController');
 
 const { protect, allowRoles } = require('../middleware/authMiddleware');
@@ -20,6 +21,7 @@ router.post('/login', login);
 router.post('/verify-phone', verifyPhoneOtp);
 router.post('/resend-otp', resendPhoneOtp);
 router.patch('/delete-account', protect, deleteMyAccount);
+router.patch('/save-push-token', protect, savePushToken);
 
 router.get('/me', protect, me);
 

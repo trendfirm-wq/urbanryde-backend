@@ -465,3 +465,29 @@ exports.deleteMyAccount = async (req, res) => {
     });
   }
 };
+exports.savePushToken = async (req, res) => {
+  try {
+    const { expoPushToken } = req.body;
+
+    if (!expoPushToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Expo push token is required',
+      });
+    }
+
+    req.user.expo_push_token = expoPushToken;
+    await req.user.save();
+
+    res.json({
+      success: true,
+      message: 'Push token saved successfully',
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to save push token',
+      error: error.message,
+    });
+  }
+};
