@@ -3,15 +3,18 @@ const bcrypt = require('bcryptjs');
 require('dotenv').config();
 
 const User = require('./models/User');
+const { formatGhanaPhoneNumber } = require('./utils/smsService');
 
 const createAdmin = async () => {
   try {
     await mongoose.connect(process.env.MONGO_URI);
 
+    const formattedPhone = formatGhanaPhoneNumber('0200000000');
+
     const existingAdmin = await User.findOne({
-  phone: '0200000000',
-  role: 'admin',
-});
+      phone: formattedPhone,
+      role: 'admin',
+    });
 
     if (existingAdmin) {
       console.log('Admin already exists');
@@ -20,16 +23,17 @@ const createAdmin = async () => {
 
     const hashedPassword = await bcrypt.hash('admin123', 10);
 
-   await User.create({
-  full_name: 'UrbanRyde Admin',
-  phone: '0200000000',
-  password: hashedPassword,
-  role: 'admin',
-  is_phone_verified: true,
-});
+    await User.create({
+      full_name: 'UrbanRyde Admin',
+      phone: formattedPhone,
+      password: hashedPassword,
+      role: 'admin',
+      is_phone_verified: true,
+    });
 
-    console.log('Admin created successfully');
-    console.log('Email: admin@urbanryde.com');
+    console.log('✅ Admin created successfully');
+    console.log('Phone: 0200000000');
+    console.log('Stored Phone:', formattedPhone);
     console.log('Password: admin123');
 
     process.exit();
