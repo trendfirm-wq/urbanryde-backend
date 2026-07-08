@@ -138,3 +138,105 @@ exports.sendMessage = async (req, res) => {
     });
   }
 };
+exports.getDriverConversations = async (req, res) => {
+  try {
+    const driverId = req.user.id;
+
+    // Find all trips assigned to this driver
+    const trips = await Trip.find({
+      driver: driverId,
+    }).select("_id");
+
+    const tripIds = trips.map((trip) => trip._id);
+
+    // Find bookings on those trips
+    const bookings = await Booking.find({
+      trip: { $in: tripIds },
+    })
+      .populate("passenger", "full_name phone")
+      .sort({ updatedAt: -1 });
+
+    const conversations = await Promise.all(
+      bookings.map(async (booking) => {
+        const lastMessage = await ChatMessage.findOne({
+          booking: booking._id,
+        }).sort({ createdAt: -1 });
+
+        const unread = await ChatMessage.countDocuments({
+          booking: booking._id,
+          sender_role: "passenger",
+          read: false,
+        });
+
+        return {
+          bookingId: booking._id,
+          ticket_code: booking.ticket_code,
+          passenger: booking.passenger,
+          last_message: lastMessage?.message || "",
+          last_message_time: lastMessage?.createdAt || null,
+          unread,
+        };
+      })
+    );
+
+    res.status(200).json({
+      conversations,
+    });
+  } catch (err) {
+    console.log(err);
+
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+};
+exports.getPassengerConversations = async (req, res) => {
+  try {
+    const passengerId = req.user.id;
+
+    const bookings = await Booking.find({
+      passenger: passengerId,
+    })
+      .populate({
+        path: "trip",
+        populate: {
+          path: "driver",
+          select: "full_name phone",
+        },
+      })
+      .sort({ updatedAt: -1 });
+
+    const conversations = await Promise.all(
+      bookings.map(async (booking) => {
+        const lastMessage = await ChatMessage.findOne({
+          booking: booking._id,
+        }).sort({ createdAt: -1 });
+
+        const unread = await ChatMessage.countDocuments({
+          booking: booking._id,
+          sender_role: "driver",
+          read: false,
+        });
+
+        return {
+          bookingId: booking._id,
+          ticket_code: booking.ticket_code,
+          driver: booking.trip?.driver,
+          last_message: lastMessage?.message || "",
+          last_message_time: lastMessage?.createdAt || null,
+          unread,
+        };
+      })
+    );
+
+    res.status(200).json({
+      conversations,
+    });
+  } catch (err) {
+    console.log(err);
+
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+};

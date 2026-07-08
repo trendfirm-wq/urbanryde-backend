@@ -237,84 +237,104 @@ exports.cancelBooking = async (req, res) => {
 
       return res.status(404).json({
         success: false,
-        message: 'Booking not found',
+        message: "Booking not found",
       });
     }
 
-    if (booking.booking_status === 'cancelled') {
+    if (booking.booking_status === "cancelled") {
       await session.abortTransaction();
 
       return res.status(400).json({
         success: false,
-        message: 'Booking already cancelled',
+        message: "Booking already cancelled",
       });
     }
 
     const trip = await Trip.findById(booking.trip).session(session);
 
-    booking.booking_status = 'cancelled';
+    if (!trip) {
+      await session.abortTransaction();
+
+      return res.status(404).json({
+        success: false,
+        message: "Trip not found",
+      });
+    }
+
+    // Only allow cancellation before the trip starts
+    if (
+      trip.trip_status !== "scheduled" &&
+      trip.trip_status !== "boarding"
+    ) {
+      await session.abortTransaction();
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "This booking can no longer be cancelled because the trip has already started.",
+      });
+    }
+
+    booking.booking_status = "cancelled";
 
     await booking.save({ session });
 
-    if (trip) {
-      trip.booked_seats = Math.max(
-        0,
-        trip.booked_seats - booking.seats_booked
-      );
+    trip.booked_seats = Math.max(
+      0,
+      trip.booked_seats - booking.seats_booked
+    );
 
-      await trip.save({ session });
-    }
+    await trip.save({ session });
 
     await session.commitTransaction();
 
-    // PASSENGER NOTIFICATION
+    // Passenger notification
     await createNotification({
       recipient: booking.passenger,
-
-      title: 'Booking cancelled',
-
-      message: 'Your booking has been cancelled successfully.',
-
-      type: 'booking_cancelled',
-
+      title: "Booking Cancelled",
+      message:
+        "Your booking has been cancelled successfully and your seats have been released.",
+      type: "booking_cancelled",
       data: {
         bookingId: booking._id,
-        tripId: booking.trip,
+        tripId: trip._id,
       },
     });
 
-    // DRIVER NOTIFICATION
-    if (trip?.driver) {
+    // Driver notification
+    if (trip.driver) {
       await createNotification({
         recipient: trip.driver,
-
-        title: 'Passenger cancelled booking',
-
-        message: 'A passenger cancelled their booking on your trip.',
-
-        type: 'passenger_cancelled_booking',
-
+        title: "Passenger Cancelled Booking",
+        message: `${booking.seats_booked} seat(s) have been released for your trip from ${trip.route_from} to ${trip.route_to}.`,
+        type: "passenger_cancelled_booking",
         data: {
           bookingId: booking._id,
-          tripId: booking.trip,
+          tripId: trip._id,
         },
       });
     }
 
     res.json({
       success: true,
-      message: 'Booking cancelled and seats restored',
+      message: "Booking cancelled successfully.",
+      booking,
     });
+
   } catch (error) {
+
     await session.abortTransaction();
 
     res.status(500).json({
       success: false,
-      message: 'Failed to cancel booking',
+      message: "Failed to cancel booking",
       error: error.message,
     });
+
   } finally {
+
     session.endSession();
+
   }
 };
 
@@ -360,4 +380,158 @@ exports.getDriverBookings = async (req, res) => {
       error: error.message,
     });
   }
+};
+exports.pickupPassenger = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found',
+      });
+    }
+
+    booking.pickup_status = 'picked_up';
+
+    await booking.save();
+
+    res.json({
+      success: true,
+      booking,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+exports.getBookingById = async (req, res) => {
+  try {
+
+    const booking = await Booking.findById(req.params.id)
+      .populate("passenger", "full_name phone")
+      .populate({
+        path: "trip",
+        populate: [
+          {
+            path: "driver",
+            select: "full_name phone",
+          },
+          {
+            path: "vehicle",
+          },
+        ],
+      });
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      booking,
+    });
+
+  } catch (err) {
+
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+
+  }
+};
+exports.deleteBooking = async (req, res) => {
+  try {
+
+    const booking = await Booking.findById(req.params.id);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    if (
+      booking.passenger.toString() !==
+      req.user._id.toString()
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized.",
+      });
+    }
+
+    if (
+      booking.booking_status !== "cancelled"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Only cancelled bookings can be deleted.",
+      });
+    }
+
+    await Booking.findByIdAndDelete(
+      booking._id
+    );
+
+    res.json({
+      success: true,
+      message:
+        "Booking deleted successfully.",
+    });
+
+  } catch (err) {
+
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+
+  }
+};
+exports.dropoffPassenger = async (req,res)=>{
+
+try{
+
+const booking=
+await Booking.findById(
+req.params.id
+);
+
+if(!booking){
+
+return res.status(404).json({
+success:false,
+message:"Booking not found",
+});
+
+}
+
+booking.pickup_status=
+"dropped_off";
+
+await booking.save();
+
+res.json({
+success:true,
+booking,
+});
+
+}catch(err){
+
+res.status(500).json({
+success:false,
+message:err.message,
+});
+
+}
+
 };

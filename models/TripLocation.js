@@ -14,7 +14,20 @@ const tripLocationSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+accuracy: {
+  type: Number,
+  default: 0,
+},
 
+altitude: {
+  type: Number,
+  default: 0,
+},
+
+last_updated: {
+  type: Date,
+  default: Date.now,
+},
     latitude: {
       type: Number,
       required: true,

@@ -19,7 +19,32 @@ const tripSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+trip_status: {
+  type: String,
+  enum: [
+    'scheduled',
+    'boarding',
+    'in_progress',
+    'completed',
+    'cancelled',
+  ],
+  default: 'scheduled',
+},
 
+current_stop: {
+  type: Number,
+  default: 0,
+},
+
+started_at: {
+  type: Date,
+  default: null,
+},
+
+completed_at: {
+  type: Date,
+  default: null,
+},
     route_from: {
       type: String,
       required: true,

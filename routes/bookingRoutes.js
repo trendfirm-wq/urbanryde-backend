@@ -6,7 +6,11 @@ const {
   getTripBookings,
   cancelBooking,
   getDriverBookings,
-} = require('../controllers/bookingController');
+  pickupPassenger,
+  getBookingById,
+  deleteBooking,
+  dropoffPassenger,
+} = require("../controllers/bookingController");
 
 const { protect, allowRoles } = require('../middleware/authMiddleware');
 
@@ -19,11 +23,28 @@ router.get('/my-bookings', protect, getMyBookings);
 router.get('/trip/:tripId', protect, allowRoles('driver', 'admin'), getTripBookings);
 
 router.patch('/:id/cancel', protect, cancelBooking);
-
+router.get("/:id", protect, getBookingById);
 router.get(
   '/driver-bookings',
   protect,
   allowRoles('driver', 'admin'),
   getDriverBookings
+);
+router.patch(
+  '/:id/pickup',
+  protect,
+  allowRoles('driver'),
+  pickupPassenger
+);
+router.delete(
+  "/:id",
+  protect,
+  deleteBooking
+);
+router.patch(
+"/:id/dropoff",
+protect,
+allowRoles("driver"),
+dropoffPassenger
 );
 module.exports = router;

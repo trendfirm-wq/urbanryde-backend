@@ -52,18 +52,31 @@ exports.getTripTrackingData = async (req, res) => {
       booking_status: { $ne: 'cancelled' },
     }).populate('passenger', 'full_name phone');
 
-    res.json({
-      success: true,
-      trip,
-      liveLocation,
-      pickupMarkers: bookings.map((booking) => ({
-        bookingId: booking._id,
-        passenger: booking.passenger,
-        pickup_point: booking.pickup_point,
-        customer_location: booking.customer_location,
-        ticket_code: booking.ticket_code,
-      })),
-    });
+   res.json({
+  success: true,
+
+  trip,
+
+  driver: liveLocation
+    ? {
+        latitude: liveLocation.latitude,
+        longitude: liveLocation.longitude,
+        heading: liveLocation.heading,
+        speed: liveLocation.speed,
+        accuracy: liveLocation.accuracy,
+        altitude: liveLocation.altitude,
+        last_updated: liveLocation.last_updated,
+      }
+    : null,
+
+  pickupMarkers: bookings.map((booking) => ({
+    bookingId: booking._id,
+    passenger: booking.passenger,
+    pickup_point: booking.pickup_point,
+    customer_location: booking.customer_location,
+    ticket_code: booking.ticket_code,
+  })),
+});
   } catch (error) {
     res.status(500).json({
       success: false,

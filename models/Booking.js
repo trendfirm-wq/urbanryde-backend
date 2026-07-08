@@ -13,7 +13,11 @@ const bookingSchema = new mongoose.Schema(
       ref: 'Trip',
       required: true,
     },
-
+pickup_status: {
+  type: String,
+  enum: ['waiting', 'picked_up', 'dropped_off'],
+  default: 'waiting',
+},
     seats_booked: {
       type: Number,
       required: true,

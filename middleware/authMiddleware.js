@@ -51,5 +51,44 @@ const allowRoles = (...roles) => {
     next();
   };
 };
+const optionalProtect = async (req, res, next) => {
+  try {
+    let token;
 
-module.exports = { protect, allowRoles };
+    if (
+      req.headers.authorization &&
+      req.headers.authorization.startsWith("Bearer")
+    ) {
+      token = req.headers.authorization.split(" ")[1];
+    }
+
+    // No token? Continue as guest.
+    if (!token) {
+      req.user = null;
+      return next();
+    }
+
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET
+    );
+
+    const user = await User.findById(decoded.id).select(
+      "-password"
+    );
+
+    req.user = user || null;
+
+    next();
+  } catch (error) {
+    // Invalid or expired token?
+    // Treat as guest instead of rejecting.
+    req.user = null;
+    next();
+  }
+};
+module.exports = {
+  protect,
+  optionalProtect,
+  allowRoles,
+};

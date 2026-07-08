@@ -97,3 +97,34 @@ exports.getUnreadCount = async (req, res) => {
     });
   }
 };
+exports.deleteNotification = async (req, res) => {
+  try {
+
+    const notification = await Notification.findOne({
+      _id: req.params.id,
+      recipient: req.user._id,
+    });
+
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        message: "Notification not found",
+      });
+    }
+
+    await notification.deleteOne();
+
+    res.json({
+      success: true,
+      message: "Notification deleted",
+    });
+
+  } catch (error) {
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+
+  }
+};

@@ -1,19 +1,40 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const { OAuth2Client } = require("google-auth-library");
+const User = require("../models/User");
+const {
+  validateProfile,
+} = require("../utils/profileValidation");
 const {
   formatGhanaPhoneNumber,
   sendVerificationSms,
 } = require('../utils/smsService');
-
+const googleClient = new OAuth2Client(
+  "618201056228-nn2vu59bvflvn88jk3grohb9qmaqjpr6.apps.googleusercontent.com"
+);
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: '30d',
+    expiresIn: "30d",
   });
 };
 
+const generatePasswordResetToken = (id) => {
+  return jwt.sign(
+    {
+      id,
+      purpose: "password-reset",
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: "10m",
+    }
+  );
+};
+
 const generateOtp = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return Math.floor(
+    100000 + Math.random() * 900000
+  ).toString();
 };
 
 exports.register = async (req, res) => {
@@ -488,6 +509,543 @@ exports.savePushToken = async (req, res) => {
       success: false,
       message: 'Failed to save push token',
       error: error.message,
+    });
+  }
+};
+exports.googleLogin = async (req, res) => {
+  try {
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({
+        message: "Google token is required",
+      });
+    }
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience:
+        "618201056228-nn2vu59bvflvn88jk3grohb9qmaqjpr6.apps.googleusercontent.com",
+    });
+
+    const payload = ticket.getPayload();
+
+    const {
+      sub,
+      email,
+      name,
+      picture,
+      email_verified,
+    } = payload;
+
+    if (!email_verified) {
+      return res.status(401).json({
+        message: "Google account is not verified",
+      });
+    }
+
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      user = await User.create({
+        full_name: name,
+        email,
+        password: "",
+        phone: undefined,
+        provider: "google",
+        google_id: sub,
+        role: "passenger",
+        is_phone_verified: true,
+      });
+    } else {
+      if (!user.google_id) {
+        user.google_id = sub;
+        user.provider = "google";
+        await user.save();
+      }
+    }
+
+   const token = generateToken(user._id);
+  return res.json({
+  success: true,
+  message: "Google login successful",
+  token,
+  user: {
+    id: user._id,
+    full_name: user.full_name,
+    email: user.email,
+    phone: user.phone,
+    role: user.role,
+    is_phone_verified: user.is_phone_verified,
+  },
+});
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      message: "Google login failed",
+    });
+  }
+};
+
+
+exports.changePassword = async (req, res) => {
+  try {
+    const {
+      currentPassword,
+      newPassword,
+      confirmPassword,
+    } = req.body;
+
+    if (
+      !currentPassword ||
+      !newPassword ||
+      !confirmPassword
+    ) {
+      return res.status(400).json({
+        message: "All fields are required.",
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        message: "New passwords do not match.",
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        message:
+          "Password must be at least 6 characters.",
+      });
+    }
+
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found.",
+      });
+    }
+
+    const correctPassword = await bcrypt.compare(
+      currentPassword,
+      user.password
+    );
+
+    if (!correctPassword) {
+      return res.status(400).json({
+        message: "Current password is incorrect.",
+      });
+    }
+
+    user.password = await bcrypt.hash(
+      newPassword,
+      12
+    );
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message:
+        "Password changed successfully.",
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      message: "Server error.",
+    });
+  }
+};
+exports.updateProfile = async (req, res) => {
+  try {
+    const user = req.user;
+    if (user.role === "admin") {
+  return res.status(403).json({
+    success: false,
+    message:
+      "Admin profiles cannot be edited here.",
+  });
+}
+const validationErrors =
+  validateProfile(req.body, user);
+
+if (
+  Object.keys(validationErrors)
+    .length > 0
+) {
+  return res.status(400).json({
+    success: false,
+    errors: validationErrors,
+  });
+}
+    const {
+      full_name,
+      email,
+      phone,
+      region,
+      city,
+      emergency_name,
+      emergency_phone,
+      driver_license,
+      vehicle_model,
+      vehicle_color,
+      plate_number,
+    } = req.body;
+
+    // -------------------------
+    // Full Name
+    // -------------------------
+    if (full_name !== undefined) {
+      if (!full_name.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Full name is required.",
+        });
+      }
+
+      user.full_name = full_name.trim();
+    }
+
+    // -------------------------
+    // Phone Number
+    // -------------------------
+    if (phone !== undefined) {
+      const existingPhone =
+        await User.findOne({
+          phone: phone.trim(),
+          _id: { $ne: user._id },
+        });
+
+      if (existingPhone) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Phone number is already in use.",
+        });
+      }
+
+      user.phone = phone.trim();
+    }
+
+    // -------------------------
+    // Email
+    // -------------------------
+    if (
+      user.provider === "local" &&
+      email !== undefined
+    ) {
+      const cleanedEmail = email
+        .trim()
+        .toLowerCase();
+
+      const existingEmail =
+        await User.findOne({
+          email: cleanedEmail,
+          _id: { $ne: user._id },
+        });
+
+      if (existingEmail) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Email address is already in use.",
+        });
+      }
+
+      user.email = cleanedEmail;
+    }
+
+    // -------------------------
+    // Address
+    // -------------------------
+    if (region !== undefined)
+      user.region = region.trim();
+
+    if (city !== undefined)
+      user.city = city.trim();
+
+    // -------------------------
+    // Emergency Contact
+    // -------------------------
+    if (emergency_name !== undefined)
+      user.emergency_name =
+        emergency_name.trim();
+
+    if (emergency_phone !== undefined)
+      user.emergency_phone =
+        emergency_phone.trim();
+
+    // -------------------------
+    // Driver Information
+    // -------------------------
+    if (user.role === "driver") {
+      if (driver_license !== undefined)
+        user.driver_license =
+          driver_license.trim();
+
+      if (vehicle_model !== undefined)
+        user.vehicle_model =
+          vehicle_model.trim();
+
+      if (vehicle_color !== undefined)
+        user.vehicle_color =
+          vehicle_color.trim();
+
+      if (plate_number !== undefined)
+        user.plate_number =
+          plate_number
+            .trim()
+            .toUpperCase();
+    }
+const modified =
+  user.modifiedPaths();
+
+if (modified.length === 0) {
+  return res.status(200).json({
+    success: true,
+    message:
+      "No changes detected.",
+    user,
+  });
+}
+    await user.save();
+await ProfileLog.create({
+  user: user._id,
+  changes: user.modifiedPaths(),
+});
+    return res.status(200).json({
+      success: true,
+      message:
+        "Profile updated successfully.",
+      user,
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Unable to update profile.",
+    });
+  }
+};
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number is required.",
+      });
+    }
+
+    const formattedPhone =
+      formatGhanaPhoneNumber(phone);
+
+    const user = await User.findOne({
+      phone: formattedPhone,
+      is_deleted: false,
+    });
+
+    // Don't reveal whether the account exists
+    if (!user) {
+      return res.json({
+        success: true,
+        message:
+          "If the phone number exists, a verification code has been sent.",
+      });
+    }
+
+    const otp = generateOtp();
+
+    user.reset_password_otp = otp;
+    user.reset_password_otp_expires =
+      Date.now() + 10 * 60 * 1000;
+
+    await user.save();
+
+    await sendVerificationSms({
+      to: formattedPhone,
+      code: otp,
+    });
+
+    res.json({
+      success: true,
+      message:
+        "Verification code sent successfully.",
+      phone: formattedPhone,
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message:
+        "Unable to process request.",
+    });
+  }
+};
+exports.verifyResetOtp = async (req, res) => {
+  try {
+    const { phone, code } = req.body;
+
+    const formattedPhone =
+      formatGhanaPhoneNumber(phone);
+
+    const user = await User.findOne({
+      phone: formattedPhone,
+    });
+
+    if (
+      !user ||
+      !user.reset_password_otp
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid verification code.",
+      });
+    }
+
+    if (
+      user.reset_password_otp_expires <
+      Date.now()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Verification code has expired.",
+      });
+    }
+
+    if (
+      user.reset_password_otp !== code
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Incorrect verification code.",
+      });
+    }
+
+ const resetToken =
+  generatePasswordResetToken(user._id);
+
+res.json({
+  success: true,
+  message: "OTP verified.",
+  resetToken,
+});
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message:
+        "Verification failed.",
+    });
+  }
+};
+
+
+exports.resetPassword = async (
+  req,
+  res
+) => {
+  try {
+    const {
+      resetToken,
+      password,
+      confirmPassword,
+    } = req.body;
+
+    if (
+      !resetToken ||
+      !password ||
+      !confirmPassword
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "All fields are required.",
+      });
+    }
+
+    if (
+      password !== confirmPassword
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Passwords do not match.",
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Password must be at least 6 characters.",
+      });
+    }
+
+    let decoded;
+
+    try {
+      decoded = jwt.verify(
+        resetToken,
+        process.env.JWT_SECRET
+      );
+    } catch {
+      return res.status(401).json({
+        success: false,
+        message:
+          "Reset session expired.",
+      });
+    }
+
+    if (
+      decoded.purpose !==
+      "password-reset"
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token.",
+      });
+    }
+
+    const user =
+      await User.findById(decoded.id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Account not found.",
+      });
+    }
+
+    user.password =
+      await bcrypt.hash(password, 12);
+
+    user.reset_password_otp = null;
+    user.reset_password_otp_expires =
+      null;
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message:
+        "Password reset successfully.",
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message:
+        "Unable to reset password.",
     });
   }
 };

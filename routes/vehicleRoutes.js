@@ -24,5 +24,11 @@ router.get('/my-vehicle', protect, allowRoles('driver'), getMyVehicle);
 router.patch('/:id', protect, allowRoles('admin'), updateVehicle);
 
 router.delete('/:id', protect, allowRoles('admin'), deleteVehicle);
+router.delete(
+  "/:id",
+  protect,
+  allowRoles("admin"),
+  deleteVehicle
+);
 
 module.exports = router;

@@ -8,12 +8,31 @@ const connectDB = require('./config/db');
 const TripLocation = require('./models/TripLocation');
 const Booking = require('./models/Booking');
 const Trip = require('./models/Trip');
+const routeRoutes = require("./routes/routeRoutes");
+const driverRoutes =
+require("./routes/driverRoutes");
+const adminRoutes =
+require("./routes/adminRoutes");
+
+
 
 const {
   createNotification,
   setSocketIo,
 } = require('./utils/notificationService');
 
+const cron =
+require("node-cron");
+
+const {
+updateTripStatuses,
+}=require("./services/tripStatusService");
+cron.schedule("* * * * *",async()=>{
+
+await updateTripStatuses();
+
+});
+console.log("GOOGLE MAPS KEY:", process.env.GOOGLE_MAPS_API_KEY);
 const app = express();
 
 connectDB();
@@ -26,13 +45,23 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api/auth', require('./routes/authRoutes'));
+
 app.use('/api/vehicles', require('./routes/vehicleRoutes'));
 app.use('/api/trips', require('./routes/tripRoutes'));
 app.use('/api/bookings', require('./routes/bookingRoutes'));
 app.use('/api/chats', require('./routes/chatRoutes'));
 app.use('/api/tracking', require('./routes/trackingRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
-
+app.use(
+"/api/drivers",
+driverRoutes
+);
+app.use(
+"/api/admin",
+adminRoutes
+);
+app.use("/api/routes", routeRoutes);
+app.use("/api/profile", require("./routes/profileRoutes"));
 const PORT = process.env.PORT || 5000;
 
 const server = http.createServer(app);
@@ -72,7 +101,16 @@ io.on('connection', (socket) => {
 
   socket.on('driverLocationUpdate', async (data) => {
     try {
-      const { tripId, driverId, latitude, longitude, heading, speed } = data;
+    const {
+  tripId,
+  driverId,
+  latitude,
+  longitude,
+  heading,
+  speed,
+  accuracy,
+  altitude,
+} = data;
 
       if (!tripId || !driverId || latitude == null || longitude == null) {
         return;
@@ -92,6 +130,9 @@ io.on('connection', (socket) => {
           longitude,
           heading: heading || 0,
           speed: speed || 0,
+accuracy: accuracy || 0,
+altitude: altitude || 0,
+last_updated: new Date(),
           is_tracking: true,
           start_notification_sent: true,
         },
