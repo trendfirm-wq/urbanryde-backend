@@ -25,7 +25,6 @@ router.get("/search", searchTrips);
 
 router.get(
   "/nearby",
-  protect,
   getNearbyTrips
 );
 
