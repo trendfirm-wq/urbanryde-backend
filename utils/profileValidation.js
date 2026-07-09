@@ -16,7 +16,13 @@ exports.validateProfile = (body, user) => {
   // -------------------
   // Email
   // -------------------
-
+if (
+  user.provider === "google" &&
+  body.email !== undefined
+) {
+  errors.email =
+    "Google email cannot be changed.";
+}
   if (
     user.provider === "local" &&
     body.email !== undefined

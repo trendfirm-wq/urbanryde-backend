@@ -333,13 +333,14 @@ exports.login = async (req, res) => {
       message: 'Login successful',
       token: generateToken(user._id),
       user: {
-        id: user._id,
-        full_name: user.full_name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        is_phone_verified: user.is_phone_verified,
-      },
+  id: user._id,
+  full_name: user.full_name,
+  email: user.email,
+  phone: user.phone,
+  provider: user.provider,
+  role: user.role,
+  is_phone_verified: user.is_phone_verified,
+},
     });
   } catch (error) {
     res.status(500).json({
@@ -567,7 +568,8 @@ exports.googleLogin = async (req, res) => {
     }
 
    const token = generateToken(user._id);
-  return res.json({
+   
+return res.json({
   success: true,
   message: "Google login successful",
   token,
@@ -576,6 +578,7 @@ exports.googleLogin = async (req, res) => {
     full_name: user.full_name,
     email: user.email,
     phone: user.phone,
+    provider: user.provider,
     role: user.role,
     is_phone_verified: user.is_phone_verified,
   },
@@ -747,31 +750,36 @@ if (phone !== undefined) {
     // -------------------------
     // Email
     // -------------------------
-    if (
-      user.provider === "local" &&
-      email !== undefined
-    ) {
-      const cleanedEmail = email
-        .trim()
-        .toLowerCase();
+if (email !== undefined) {
 
-      const existingEmail =
-        await User.findOne({
-          email: cleanedEmail,
-          _id: { $ne: user._id },
-        });
+  if (user.provider === "google") {
+    return res.status(403).json({
+      success: false,
+      message:
+        "Google email cannot be changed.",
+    });
+  }
 
-      if (existingEmail) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Email address is already in use.",
-        });
-      }
+  const cleanedEmail = email
+    .trim()
+    .toLowerCase();
 
-      user.email = cleanedEmail;
-    }
+  const existingEmail =
+    await User.findOne({
+      email: cleanedEmail,
+      _id: { $ne: user._id },
+    });
 
+  if (existingEmail) {
+    return res.status(400).json({
+      success: false,
+      message:
+        "Email address is already in use.",
+    });
+  }
+
+  user.email = cleanedEmail;
+}
     // -------------------------
     // Address
     // -------------------------
