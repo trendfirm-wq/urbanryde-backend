@@ -709,26 +709,39 @@ if (
       user.full_name = full_name.trim();
     }
 
-    // -------------------------
-    // Phone Number
-    // -------------------------
-    if (phone !== undefined) {
-      const existingPhone =
-        await User.findOne({
-          phone: phone.trim(),
-          _id: { $ne: user._id },
-        });
+   // -------------------------
+// Phone Number
+// -------------------------
+if (phone !== undefined) {
+  const formattedPhone =
+    formatGhanaPhoneNumber(phone);
 
-      if (existingPhone) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Phone number is already in use.",
-        });
-      }
+  if (!formattedPhone) {
+    return res.status(400).json({
+      success: false,
+      errors: {
+        phone:
+          "Please enter a valid Ghana phone number.",
+      },
+    });
+  }
 
-      user.phone = phone.trim();
-    }
+  const existingPhone =
+    await User.findOne({
+      phone: formattedPhone,
+      _id: { $ne: user._id },
+    });
+
+  if (existingPhone) {
+    return res.status(400).json({
+      success: false,
+      message:
+        "Phone number is already in use.",
+    });
+  }
+
+  user.phone = formattedPhone;
+}
 
     // -------------------------
     // Email
