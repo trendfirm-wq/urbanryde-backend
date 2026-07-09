@@ -5,6 +5,7 @@ const User = require("../models/User");
 const {
   validateProfile,
 } = require("../utils/profileValidation");
+const ProfileLog = require("../models/ProfileLog");
 const {
   formatGhanaPhoneNumber,
   sendVerificationSms,
